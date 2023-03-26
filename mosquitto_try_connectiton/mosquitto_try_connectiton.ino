@@ -24,9 +24,9 @@
 #include <ArduinoJson.h>
 // Update these with values suitable for your network.
 
-const char* ssid = "310";
+const char* ssid = "Redmi Note 11";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.0.104";
+const char* mqtt_server = "192.168.152.236";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -35,15 +35,15 @@ unsigned long lastMsg = 0;
 char msg[MSG_BUFFER_SIZE];
 int value = 0;
 String payloadStr;
+bool enrolled = false;
 
 
 //for AS608 fingerprint
-SoftwareSerial mySerial(D5, D6);
+SoftwareSerial mySerial(D6, D5);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
 uint8_t fingerTemplateCopy[512];
-bool ceva;
-char* fingerTemplateCopy2;
+
 
 void setup_wifi() {
 
@@ -126,9 +126,11 @@ void reconnect() {
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);  // Initialize the BUILTIN_LED pin as an output
   Serial.begin(115200);
+  // set the data rate for the sensor serial port
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+  finger.begin(57600);
 }
 
 //Arduinojson library
@@ -161,22 +163,40 @@ void loop() {
   }
   client.loop();
 
-  publishMessage();
-  // Serial.println("Ready to enroll a fingerprint!");
-  // Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
-  // id = readnumber();
-  // if (id == 0) {  // ID #0 not allowed, try again!
-  //   return;
-  // }
-  // Serial.print("Enrolling ID #");
-  // Serial.println(id);
+  // publishMessage();
 
-  // while (!getFingerprintEnroll())
-  //   ;
-  // if (ceva == 1) {
-  //   snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
-  //   client.publish("test/topic", msg);
-  // }
+  if (payloadStr == "nextFingerprint") {
+    Serial.println("Ready to enroll a fingerprint!");
+    Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
+    id = readnumber();
+    if (id == 0) {  // ID #0 not allowed, try again!
+      return;
+    }
+    Serial.print("Enrolling ID #");
+    Serial.println(id);
+
+    while (!getFingerprintEnroll())
+      ;
+    if (!enrolled) {
+      // snprintf(msg, MSG_BUFFER_SIZE, (char*)fingerTemplateCopy, value);
+      doc["Firstname"] = "Bejgu";
+      doc["Lastname"] = "Leonard Mihai";
+      doc["CNP"] = 123456789012345;
+      doc["Fingerprint"] = (char*)fingerTemplateCopy;
+      doc["CandidateId"] = "1";
+      serializeJson(doc, msg);
+
+
+      client.publish("test/topic", msg);
+      Serial.println("S-o trimis");
+      Serial.println("S-o trimis");
+      Serial.println("S-o trimis");
+      enrolled = true;
+    }
+  } else {
+    Serial.println("Waiting for command from node-red");
+  }
+  payloadStr="WaitingForNextFingerPrintCommand";
 }
 
 
@@ -192,7 +212,7 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
       Serial.println(" loaded");
       break;
     case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
+      Serial.println("Communication error downloadFingerPrintTemplate198");
       return p;
     default:
       Serial.print("Unknown error ");
@@ -285,7 +305,7 @@ uint8_t getFingerprintEnroll() {
         Serial.println(".");
         break;
       case FINGERPRINT_PACKETRECIEVEERR:
-        Serial.println("Communication error");
+        Serial.println("Communication error ");
         break;
       case FINGERPRINT_IMAGEFAIL:
         Serial.println("Imaging error");
@@ -307,7 +327,7 @@ uint8_t getFingerprintEnroll() {
       Serial.println("Image too messy");
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
+      Serial.println("Communication error ");
       return p;
     case FINGERPRINT_FEATUREFAIL:
       Serial.println("Could not find fingerprint features");
@@ -337,10 +357,10 @@ uint8_t getFingerprintEnroll() {
         Serial.println("Image taken");
         break;
       case FINGERPRINT_NOFINGER:
-        Serial.print(".");
+        Serial.print("w");
         break;
       case FINGERPRINT_PACKETRECIEVEERR:
-        Serial.println("Communication error");
+        Serial.println("Communication error ");
         break;
       case FINGERPRINT_IMAGEFAIL:
         Serial.println("Imaging error");
@@ -362,7 +382,7 @@ uint8_t getFingerprintEnroll() {
       Serial.println("Image too messy");
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
+      Serial.println("Communication error ");
       return p;
     case FINGERPRINT_FEATUREFAIL:
       Serial.println("Could not find fingerprint features");
@@ -383,9 +403,8 @@ uint8_t getFingerprintEnroll() {
   p = finger.createModel();
   if (p == FINGERPRINT_OK) {
     Serial.println("Prints matched!");
-    ceva = 1;
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
-    Serial.println("Communication error");
+    Serial.println("Communication error ");
     return p;
   } else if (p == FINGERPRINT_ENROLLMISMATCH) {
     Serial.println("Fingerprints did not match");
@@ -401,7 +420,7 @@ uint8_t getFingerprintEnroll() {
   if (p == FINGERPRINT_OK) {
     Serial.println("Stored!");
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
-    Serial.println("Communication error");
+    Serial.println("Communication error ");
     return p;
   } else if (p == FINGERPRINT_BADLOCATION) {
     Serial.println("Could not store in that location");
@@ -421,10 +440,8 @@ uint8_t getFingerprintEnroll() {
 
   // fingerTemplateCopy2 = (char*)(fingerTemplateCopy);
   // msg = (char)(fingerTemplateCopy);
-  for (int i = 0; i < 512; i++) {
-    Serial.printf((const char*)fingerTemplateCopy[i]);
-    msg[i] = fingerTemplateCopy[i];
-  }
+  Serial.println("Sase cai");
+  Serial.println("Sase cai");
 
   return true;
 }
