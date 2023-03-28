@@ -24,9 +24,9 @@
 #include <ArduinoJson.h>
 // Update these with values suitable for your network.
 
-const char* ssid = "Redmi Note 11";
+const char* ssid = "310";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.152.236";
+const char* mqtt_server = "192.168.0.110";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -86,16 +86,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println("This is the received messaged in a String: ");
   Serial.println(payloadStr);
 
-  //
-
-  // Switch on the LED if an 1 was received as first character
-  if ((char)payload[0] == '1') {
-    digitalWrite(BUILTIN_LED, LOW);  // Turn the LED on (Note that LOW is the voltage level
-    // but actually the LED is on; this is because
-    // it is active low on the ESP-01)
-  } else {
-    digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
-  }
 }
 
 void reconnect() {
@@ -113,6 +103,7 @@ void reconnect() {
       client.publish("test/topic", "hello world");
       // ... and resubscribe
       client.subscribe("inTopic");
+      // client.subscribe("verification");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -194,7 +185,7 @@ void loop() {
       enrolled = true;
     }
   } else {
-    Serial.println("Waiting for command from node-red");
+    Serial.print("/");
   }
   payloadStr="WaitingForNextFingerPrintCommand";
 }
