@@ -31,11 +31,16 @@ const char* mqtt_server = "192.168.0.110";
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
-#define MSG_BUFFER_SIZE (600)
+#define MSG_BUFFER_SIZE (1024)
 char msg[MSG_BUFFER_SIZE];
 int value = 0;
 String payloadStr;
 bool enrolled = false;
+
+uint8_t fingerTemplateToSend[512];
+char fingerTemplateHex[512];
+
+
 
 
 //for AS608 fingerprint
@@ -85,7 +90,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println();
   Serial.println("This is the received messaged in a String: ");
   Serial.println(payloadStr);
-
 }
 
 void reconnect() {
@@ -100,7 +104,7 @@ void reconnect() {
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("test/topic", "hello world");
+      client.publish("test/topic", "s-a reconectat");
       // ... and resubscribe
       client.subscribe("inTopic");
       // client.subscribe("verification");
@@ -125,27 +129,28 @@ void setup() {
 }
 
 //Arduinojson library
-DynamicJsonDocument doc(200);
+DynamicJsonDocument doc(8192);
 
-void publishMessage() {
-  unsigned long now = millis();
-  doc["Firstname"] = "Bejgu";
-  doc["Lastname"] = "Leonard Mihai";
-  doc["CNP"] = 123456789012345;
-  doc["Fingerprint"] = "Some Fingerprint";
-  doc["CandidateId"] = "1";
-  serializeJson(doc, msg);
+// void publishMessage() {
+//   unsigned long now = millis();
+//   doc["Firstname"] = "Bejgu";
+//   doc["Lastname"] = "Leonard Mihai";
+//   doc["CNP"] = 123456789012345;
+//   doc["Fingerprint"] = "Some Fingerprint";
+//   doc["CandidateId"] = "1";
 
-  if (now - lastMsg > 2000) {
-    lastMsg = now;
-    ++value;
-    // snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
-    Serial.print("Publish message: ");
-    Serial.println(msg);
-    client.publish("test/topic", msg);
-  }
-}
+//   serializeJson(doc, msg);
 
+//   if (now - lastMsg > 2000) {
+//     lastMsg = now;
+//     ++value;
+//     // snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
+//     Serial.print("Publish message: ");
+//     Serial.println(msg);
+//     client.publish("test/topic", msg);
+//   }
+// }
+const int CHUNK_SIZE = 128;
 
 void loop() {
 
@@ -157,9 +162,9 @@ void loop() {
   // publishMessage();
 
   if (payloadStr == "nextFingerprint") {
+    finger.emptyDatabase();
     Serial.println("Ready to enroll a fingerprint!");
-    Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
-    id = readnumber();
+    id = 1;
     if (id == 0) {  // ID #0 not allowed, try again!
       return;
     }
@@ -169,25 +174,33 @@ void loop() {
     while (!getFingerprintEnroll())
       ;
     if (!enrolled) {
-      // snprintf(msg, MSG_BUFFER_SIZE, (char*)fingerTemplateCopy, value);
-      doc["Firstname"] = "Bejgu";
-      doc["Lastname"] = "Leonard Mihai";
-      doc["CNP"] = 123456789012345;
-      doc["Fingerprint"] = (char*)fingerTemplateCopy;
-      doc["CandidateId"] = "1";
-      serializeJson(doc, msg);
 
+      int chunkSize = 128;
+      int len = strlen(fingerTemplateHex);
+      int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
 
-      client.publish("test/topic", msg);
-      Serial.println("S-o trimis");
-      Serial.println("S-o trimis");
+      for (int i = 0; i < numChunks; i++) {
+        char chunk[chunkSize + 1];
+        strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
+        chunk[chunkSize] = '\0';                                       // Add null terminator
+        String key = "Fingerprint";
+        doc[key] = chunk;
+        serializeJson(doc, msg);
+        client.publish("test/topic", msg);
+        doc.clear();
+        delay(10);
+      }
+
+      // serializeJson(doc, msg);
+      // client.publish("test/topic", msg);
+
       Serial.println("S-o trimis");
       enrolled = true;
+      finger.emptyDatabase();
     }
   } else {
-    Serial.print("/");
   }
-  payloadStr="WaitingForNextFingerPrintCommand";
+  payloadStr = "WaitingForNextFingerPrintCommand";
 }
 
 
@@ -262,10 +275,22 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
   }
   Serial.println("\ndone.");
 
-  for (int i = 0; i < 512; ++i) {
-    fingerTemplateCopy[i] = fingerTemplate[i];
-  }
+  toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
+  Serial.println("ceva");
+  Serial.print(fingerTemplateHex);
+  Serial.println("\naltceva");
   return p;
+}
+
+
+void toHexString(uint8_t* data, uint16_t size, char* hexString, uint16_t maxStringSize) {
+  char hexLookup[] = "0123456789ABCDEF";
+  uint16_t i = 0, j = 0;
+  for (i = 0; i < size && j + 2 < maxStringSize; i++) {
+    hexString[j++] = hexLookup[(data[i] >> 4) & 0x0F];
+    hexString[j++] = hexLookup[data[i] & 0x0F];
+  }
+  hexString[j] = '\0';  // terminate the string
 }
 
 
@@ -426,13 +451,10 @@ uint8_t getFingerprintEnroll() {
   Serial.println("");
   downloadFingerprintTemplate(id);
 
-  for (int i = 0; i < 512; i++)
-    printHex(fingerTemplateCopy[i], 2);
 
   // fingerTemplateCopy2 = (char*)(fingerTemplateCopy);
   // msg = (char)(fingerTemplateCopy);
-  Serial.println("Sase cai");
-  Serial.println("Sase cai");
+  Serial.println("Exit from getFingerprintEnroll()");
 
   return true;
 }
