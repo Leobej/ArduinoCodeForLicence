@@ -47,7 +47,6 @@ char fingerTemplateHex[512];
 SoftwareSerial mySerial(D6, D5);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
-uint8_t fingerTemplateCopy[512];
 
 
 void setup_wifi() {
@@ -129,28 +128,37 @@ void setup() {
 }
 
 //Arduinojson library
-DynamicJsonDocument doc(8192);
+DynamicJsonDocument doc(1024);
+int key = 0;
+int chunkSize = 128;
 
-// void publishMessage() {
-//   unsigned long now = millis();
-//   doc["Firstname"] = "Bejgu";
-//   doc["Lastname"] = "Leonard Mihai";
-//   doc["CNP"] = 123456789012345;
-//   doc["Fingerprint"] = "Some Fingerprint";
-//   doc["CandidateId"] = "1";
+void publishMessage() {
+  memset(msg, 0, sizeof(msg));
 
-//   serializeJson(doc, msg);
+  int len = strlen(fingerTemplateHex);
+  int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
 
-//   if (now - lastMsg > 2000) {
-//     lastMsg = now;
-//     ++value;
-//     // snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
-//     Serial.print("Publish message: ");
-//     Serial.println(msg);
-//     client.publish("test/topic", msg);
-//   }
-// }
-const int CHUNK_SIZE = 128;
+  for (int i = 0; i < numChunks; i++) {
+    char chunk[chunkSize + 1];
+    strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
+    chunk[chunkSize] = '\0';                                       // Add null terminator
+    String name = "Fingerprint";
+    doc["key"] = key;
+    doc[name] = chunk;
+
+    serializeJson(doc, msg);
+    client.publish("test/topic", msg);
+
+    client.flush();
+    doc.clear();
+  }
+  key++;
+  Serial.println("S-o trimis");
+  enrolled = true;
+}
+
+
+
 
 void loop() {
 
@@ -159,47 +167,18 @@ void loop() {
   }
   client.loop();
 
-  // publishMessage();
-
   if (payloadStr == "nextFingerprint") {
     finger.emptyDatabase();
     Serial.println("Ready to enroll a fingerprint!");
     id = 1;
-    if (id == 0) {  // ID #0 not allowed, try again!
-      return;
-    }
     Serial.print("Enrolling ID #");
     Serial.println(id);
 
     while (!getFingerprintEnroll())
       ;
-    if (!enrolled) {
-
-      int chunkSize = 128;
-      int len = strlen(fingerTemplateHex);
-      int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
-
-      for (int i = 0; i < numChunks; i++) {
-        char chunk[chunkSize + 1];
-        strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
-        chunk[chunkSize] = '\0';                                       // Add null terminator
-        String key = "Fingerprint";
-        doc[key] = chunk;
-        serializeJson(doc, msg);
-        client.publish("test/topic", msg);
-        doc.clear();
-        delay(10);
-      }
-
-      // serializeJson(doc, msg);
-      // client.publish("test/topic", msg);
-
-      Serial.println("S-o trimis");
-      enrolled = true;
-      finger.emptyDatabase();
-    }
-  } else {
+      publishMessage();
   }
+  
   payloadStr = "WaitingForNextFingerPrintCommand";
 }
 
@@ -307,7 +286,6 @@ void printHex(int num, int precision) {
 
 
 uint8_t getFingerprintEnroll() {
-
   int p = -1;
   Serial.print("Waiting for valid finger to enroll as #");
   Serial.println(id);
@@ -451,9 +429,6 @@ uint8_t getFingerprintEnroll() {
   Serial.println("");
   downloadFingerprintTemplate(id);
 
-
-  // fingerTemplateCopy2 = (char*)(fingerTemplateCopy);
-  // msg = (char)(fingerTemplateCopy);
   Serial.println("Exit from getFingerprintEnroll()");
 
   return true;
