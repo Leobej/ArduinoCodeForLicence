@@ -8,7 +8,7 @@
 #include <ArduinoJson.h>
 const char* ssid = "310";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.0.110";
+const char* mqtt_server = "192.168.24.236";
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
