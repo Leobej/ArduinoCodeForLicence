@@ -26,22 +26,23 @@
 
 const char* ssid = "310";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.24.236";
+const char* mqtt_server = "192.168.0.110";
+
+
+#define MSG_BUFFER_SIZE (1024)
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-unsigned long lastMsg = 0;
-#define MSG_BUFFER_SIZE (1024)
 char msg[MSG_BUFFER_SIZE];
 int value = 0;
-String payloadStr;
+String messageFromServer;
 bool enrolled = false;
 
 uint8_t fingerTemplateToSend[512];
 char fingerTemplateHex[512];
 
-
-
+String deviceId="REG_1";
 
 //for AS608 fingerprint
 SoftwareSerial mySerial(D6, D5);
@@ -84,11 +85,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   char payloadWithNull[length + 1];
   memcpy(payloadWithNull, payload, length);
   payloadWithNull[length] = '\0';
-  payloadStr = String(payloadWithNull);
+  messageFromServer = String(payloadWithNull);
   // till here
   Serial.println();
   Serial.println("This is the received messaged in a String: ");
-  Serial.println(payloadStr);
+  Serial.println(messageFromServer);
 }
 
 void reconnect() {
@@ -142,9 +143,9 @@ void publishMessage() {
     char chunk[chunkSize + 1];
     strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
     chunk[chunkSize] = '\0';                                       // Add null terminator
-    String name = "Fingerprint";
     doc["key"] = key;
-    doc[name] = chunk;
+    doc["fingerprint"] = chunk;
+    doc["deviceId"]=deviceId;
 
     serializeJson(doc, msg);
     client.publish("test/topic", msg);
@@ -167,7 +168,8 @@ void loop() {
   }
   client.loop();
 
-  if (payloadStr == "nextFingerprint") {
+  if (messageFromServer
+      == "nextFingerprint") {
     finger.emptyDatabase();
     Serial.println("Ready to enroll a fingerprint!");
     id = 1;
@@ -176,10 +178,10 @@ void loop() {
 
     while (!getFingerprintEnroll())
       ;
-      publishMessage();
+    publishMessage();
   }
-  
-  payloadStr = "WaitingForNextFingerPrintCommand";
+
+  messageFromServer = "WaitingForNextFingerPrintCommand";
 }
 
 
