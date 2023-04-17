@@ -1,99 +1,97 @@
-/* @file HelloKeypad.pde
-|| @version 1.0
-|| @author Alexander Brevig
-|| @contact alexanderbrevig@gmail.com
-||
-|| @description
-|| | Demonstrates the simplest use of the matrix Keypad library.
-|| #
-*/
-#include "Keypad.h"
-const byte ROWS = 4; //four rows
-const byte COLS = 4; //four columns
 
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Keypad.h>
+
+// WiFi and MQTT credentials
+const char* ssid = "DIGI_bb4ed4";
+const char* password = "1234567890";
+const char* mqtt_server = "192.168.1.9";
+
+// Keypad configuration
+const byte ROWS = 4;
+const byte COLS = 3;
 char keys[ROWS][COLS] = {
-  {'1','2','3','A'},
-  {'4','5','6','B'},
-  {'7','8','9','C'},
-  {'*','0','#','D'}
+  { '1', '2', '3' },
+  { '4', '5', '6' },
+  { '7', '8', '9' },
+  { '*', '0', '#' }
 };
-
-// For Arduino Microcontroller
-// byte rowPins[ROWS] = {9, 8, 7, 6}; 
-// byte colPins[COLS] = {5, 4, 3, 2}; 
-
-// For ESP8266 Microcontroller
-byte rowPins[ROWS] = {D0, D1, D2, D3}; 
-byte colPins[COLS] = {D4, D5, D6 }; 
-
-// For ESP32 Microcontroller
-//byte rowPins[ROWS] = {23, 22, 3, 21}; 
-//byte colPins[COLS] = {19, 18, 5, 17};
-
+byte rowPins[ROWS] = { D0, D1, D2, D3 };
+byte colPins[COLS] = { D4, D5, D6 };
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+// MQTT client
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Message buffer
+const int messageLength = 13;
+char message[messageLength + 1];
+int messageIndex = 0;
 
 void setup() {
   Serial.begin(9600);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("Connected to WiFi");
+
+  client.setServer(mqtt_server, 1883);
 }
 
 void loop() {
-  char key = keypad.getKey();
+  if (!client.connected()) {
+    reconnect();
+  }
 
-  if (key){
-    Serial.println(key);
+  client.loop();
+
+  char key = keypad.getKey();
+  if (key != NO_KEY) {
+    if (key == '*') {
+      if (messageIndex > 0) {
+        messageIndex--;
+        message[messageIndex] = '\0';
+        Serial.print("Deleted: ");
+        Serial.println(message);
+      }
+    } else if (key == '#') {
+      if (messageIndex == messageLength) {
+        client.publish("cnp", message);
+        Serial.print("Message sent: ");
+        Serial.println(message);
+      } else {
+        Serial.println("Message must be 13 characters long.");
+      }
+    } else {
+      if (messageIndex < messageLength) {
+        message[messageIndex++] = key;
+        message[messageIndex] = '\0';
+        Serial.print("Input: ");
+        Serial.println(message);
+      } else {
+        Serial.println("Maximum input length reached. Press '*' to delete or '#' to send.");
+      }
+    }
   }
 }
 
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    if (client.connect("ESP8266Client")) {
+      Serial.println("connected");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
 
-
-
-// const byte n_rows = 4;
-// const byte n_cols = 4;
-// char keys[n_rows][n_cols] = {
-
-//   { '1', '2', '3', 'A' },
-
-//   { '4', '5', '6', 'B' },
-
-//   { '7', '8', '9', 'C' },
-
-//   { '*', '0', '#', 'D' }
-
-// };
-// byte colPins[n_rows] = { D3, D2, D1, D0 };
-// byte rowPins[n_cols] = { D7, D6, D5, D4 };  //connect to the column pinouts of the keypad
-// LiquidCrystal_I2C lcd(0x27, 16, 2);         // I2C address, SDA, SCL, backlight (optional)
-
-// Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, n_rows, n_cols);
-// String enteredData = "";
-// void setup() {
-//   // Wire.begin(SDA, SCL);
-//   Serial.begin(115200);
-//   Wire.begin(D1, D2);  // initialize I2C bus with SDA=D2 and SCL=D1
-//   lcd.init();          // initialize the LCD display
-//   lcd.backlight();
-// }
-// void loop() {
-//   // char key = keypad.getKey();
-//   // lcd.setCursor(0, 0);
-//   // lcd.print("cute");
-//   // if (key != NO_KEY) {
-//   //   if (key == '#') {
-//   //     Serial.println(enteredData);
-//   //     lcd.clear();
-//   //     lcd.print(enteredData);
-//   //     enteredData = "";
-//   //   } else if (key == 'D') {
-//   //     if (enteredData.length() > 0) {
-//   //       enteredData.remove(enteredData.length() - 1);
-//   //       lcd.setCursor(0, 0);
-//   //       lcd.print(enteredData);
-//   //     }
-//   //   } else {
-//   //     enteredData += key;
-//   //     lcd.setCursor(0, 0);
-//   //     lcd.print(enteredData);
-//   //   }
-//   // }
-//   Serial.println("Sal");
-// }
