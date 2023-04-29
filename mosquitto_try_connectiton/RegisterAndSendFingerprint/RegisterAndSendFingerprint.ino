@@ -24,9 +24,9 @@
 #include <ArduinoJson.h>
 // Update these with values suitable for your network.
 
-const char* ssid = "DIGI_bb4ed4";
+const char* ssid = "310";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.1.9";
+const char* mqtt_server = "192.168.0.110";
 
 
 #define MSG_BUFFER_SIZE (1024)
@@ -45,7 +45,7 @@ char fingerTemplateHex[512];
 String deviceId="REG_1";
 
 //for AS608 fingerprint
-SoftwareSerial mySerial(D6, D5);
+SoftwareSerial mySerial(D1, D2);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
 
