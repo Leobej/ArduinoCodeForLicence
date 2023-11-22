@@ -6,9 +6,9 @@
 #include <PubSubClient.h>
 #include <Adafruit_Fingerprint.h>
 #include <ArduinoJson.h>
-const char* ssid = "310";
+const char* ssid = "TP-Link_9A9C";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.24.236";
+const char* mqtt_server = "192.168.0.21";
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
@@ -26,7 +26,7 @@ String payloadStr;
 
 uint8_t fingerTemplateToSend[512];
 char fingerTemplateHex[512];
-SoftwareSerial mySerial(D6, D5);
+SoftwareSerial mySerial(D5, D6);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
 
@@ -95,9 +95,9 @@ void reconnect() {
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("test/topic", "s-a reconectat");
+      client.publish("voteFingerprint", "s-a reconectat");
       // ... and resubscribe
-      client.subscribe("inTopic");
+      client.subscribe("voteFingerprintTopic");
       // client.subscribe("verification");
     } else {
       Serial.print("failed, rc=");
@@ -134,12 +134,13 @@ void publishMessage() {
     char chunk[chunkSize + 1];
     strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
     chunk[chunkSize] = '\0';                                       // Add null terminator
-    String name = "Fingerprint";
+    String name = "fingerprint";
     doc["cnp"] = 1;
+    doc["deviceId"]="VOTE_1";
     doc[name] = chunk;
 
     serializeJson(doc, msg);
-    client.publish("test/topic", msg);
+    client.publish("voteFingerprint", msg);
 
     client.flush();
     doc.clear();
