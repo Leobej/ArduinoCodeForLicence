@@ -1,12 +1,13 @@
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <Keypad.h>
 
 // WiFi and MQTT credentials
-const char* ssid = "DIGI_bb4ed4";
+const char* ssid = "TP-Link_9A9C";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.1.9";
+const char* mqtt_server = "192.168.0.102";
 
 // Keypad configuration
 const byte ROWS = 4;
@@ -17,6 +18,8 @@ char keys[ROWS][COLS] = {
   { '7', '8', '9' },
   { '*', '0', '#' }
 };
+StaticJsonDocument<200> doc;
+char deviceId[] = "deviceId1";
 byte rowPins[ROWS] = { D0, D1, D2, D3 };
 byte colPins[COLS] = { D4, D5, D6 };
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
@@ -62,9 +65,15 @@ void loop() {
       }
     } else if (key == '#') {
       if (messageIndex == messageLength) {
-        client.publish("cnp", message);
+        doc["cnp"] = message;
+        doc["deviceId"] = deviceId;
+        char jsonOutput[256];  // Adjust the size as needed
+        serializeJson(doc, jsonOutput);
+
+        client.publish("cnp", jsonOutput);
         Serial.print("Message sent: ");
         Serial.println(message);
+        Serial.println(jsonOutput);
       } else {
         Serial.println("Message must be 13 characters long.");
       }
@@ -94,4 +103,3 @@ void reconnect() {
     }
   }
 }
-
