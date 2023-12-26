@@ -8,7 +8,7 @@
 #include <ArduinoJson.h>
 const char* ssid = "TP-Link_9A9C";
 const char* password = "1234567890";
-const char* mqtt_server = "192.168.0.21";
+const char* mqtt_server = "192.168.0.102";
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
@@ -30,13 +30,14 @@ SoftwareSerial mySerial(D5, D6);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
 
-const char* items[] = { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5" };
+const char* items[] = { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9" };
 const int ITEM_DISPLAY_TIME = 2000;
 const int JOYSTICK_X = A0;
 const int JOYSTICK_Y = D3;
 const int JOYSTICK_BUTTON = D7;
 const int JOYSTICK_DEAD_ZONE = 50;
 int current_item = 0;
+bool isFingerprintVerified = false;
 
 DynamicJsonDocument doc(1024);
 int chunkSize = 128;
@@ -72,15 +73,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
-  // code added by me
   char payloadWithNull[length + 1];
   memcpy(payloadWithNull, payload, length);
   payloadWithNull[length] = '\0';
   payloadStr = String(payloadWithNull);
-  // till here
   Serial.println();
   Serial.println("This is the received messaged in a String: ");
   Serial.println(payloadStr);
+
+  // Check if the message is from the fingerprint verification topic
+  if (String(topic) == "voteFingerprintTopic") {
+    if (payloadStr == "verified") {
+      isFingerprintVerified = true;
+      Serial.println("Fingerprint verified!");
+    }
+  }
 }
 
 void reconnect() {
@@ -135,8 +142,8 @@ void publishMessage() {
     strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
     chunk[chunkSize] = '\0';                                       // Add null terminator
     String name = "fingerprint";
-    doc["cnp"] = 1;
-    doc["deviceId"]="VOTE_1";
+    doc["voterId"] = 1;
+    doc["deviceId"] = "VOTE_1";
     doc[name] = chunk;
 
     serializeJson(doc, msg);
@@ -151,8 +158,6 @@ void publishMessage() {
 
 
 void loop() {
-
-
   if (!client.connected()) {
     reconnect();
   }
@@ -164,44 +169,66 @@ void loop() {
     id = 1;
     Serial.print("Enrolling ID #");
     Serial.println(id);
-
     while (!getFingerprintEnroll())
       ;
     publishMessage();
   }
-
   payloadStr = "WaitingForNextFingerPrintCommand";
 
   int joystick_x = analogRead(JOYSTICK_X);
-  int joystick_y = digitalRead(JOYSTICK_Y);
   int joystick_button = digitalRead(JOYSTICK_BUTTON);
 
+  // Navigation logic
   if (joystick_x < JOYSTICK_DEAD_ZONE) {
     if (current_item > 0) {
       current_item--;
     }
-    delay(300);  // debounce
+    delay(300);  // debounce delay
   } else if (joystick_x > 1023 - JOYSTICK_DEAD_ZONE) {
     if (current_item < sizeof(items) / sizeof(items[0]) - 1) {
       current_item++;
     }
-    delay(300);  // debounce
+    delay(300);  // debounce delay
   }
 
+  // Display items and the arrow
   display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print(items[current_item]);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  int itemsPerPage = 5;  // Adjust based on your display size
+  int page = current_item / itemsPerPage;
+  int startIndex = page * itemsPerPage;
+  int endIndex = min(startIndex + itemsPerPage, static_cast<int>(sizeof(items) / sizeof(items[0])));
+
+
+  for (int i = startIndex; i < endIndex; i++) {
+    display.setCursor(10, (i - startIndex) * 10);  // Adjust text positioning as needed
+    if (i == current_item) {
+      display.print("> ");  // Arrow for the selected item
+    }
+    display.println(items[i]);
+  }
+
   display.display();
-  int button_state = digitalRead(JOYSTICK_BUTTON);
-  if (button_state == LOW) {
-    delay(300);
-    client.publish("send/vote", items[current_item]);
-    return;
+  
+
+  if (isFingerprintVerified && joystick_button == LOW) {
+    delay(300);  // debounce delay
+    DynamicJsonDocument voteDoc(256); 
+    voteDoc["voterId"] = 1; 
+    voteDoc["selectedItem"] = items[current_item];
+
+    char voteMsg[256]; 
+    serializeJson(voteDoc, voteMsg);
+
+    client.publish("send/vote", voteMsg);
+    isFingerprintVerified = false;  
+
+    Serial.println("Vote sent: ");
+    Serial.println(voteMsg); 
   }
 }
-
-
-
 
 uint8_t downloadFingerprintTemplate(uint16_t id) {
   Serial.println("------------------------------------");
