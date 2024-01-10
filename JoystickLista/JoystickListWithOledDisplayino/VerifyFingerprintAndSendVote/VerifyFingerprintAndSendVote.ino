@@ -152,6 +152,7 @@ void publishMessage() {
     client.flush();
     doc.clear();
   }
+  memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
 
   Serial.println("S-o trimis");
 }
@@ -211,22 +212,22 @@ void loop() {
   }
 
   display.display();
-  
+
 
   if (isFingerprintVerified && joystick_button == LOW) {
     delay(300);  // debounce delay
-    DynamicJsonDocument voteDoc(256); 
-    voteDoc["voterId"] = 1; 
+    DynamicJsonDocument voteDoc(256);
+    voteDoc["voterId"] = 1;
     voteDoc["selectedItem"] = items[current_item];
 
-    char voteMsg[256]; 
+    char voteMsg[256];
     serializeJson(voteDoc, voteMsg);
 
     client.publish("send/vote", voteMsg);
-    isFingerprintVerified = false;  
+    isFingerprintVerified = false;
 
     Serial.println("Vote sent: ");
-    Serial.println(voteMsg); 
+    Serial.println(voteMsg);
   }
 }
 
@@ -299,12 +300,12 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
     printHex(fingerTemplate[i], 2);
     //Serial.print(", ");
   }
-  Serial.println("\ndone.");
+
 
   toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
-  Serial.println("ceva");
+
   Serial.print(fingerTemplateHex);
-  Serial.println("\naltceva");
+  Serial.println("\ndone.");
   return p;
 }
 
@@ -475,7 +476,7 @@ uint8_t getFingerprintEnroll() {
   }
   Serial.println("");
   downloadFingerprintTemplate(id);
-
+  // memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
   Serial.println("Exit from getFingerprintEnroll()");
 
   return true;
