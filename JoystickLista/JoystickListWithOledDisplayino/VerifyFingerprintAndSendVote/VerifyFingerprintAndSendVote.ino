@@ -6,6 +6,10 @@
 #include <PubSubClient.h>
 #include <Adafruit_Fingerprint.h>
 #include <ArduinoJson.h>
+#include "base64.hpp"
+#include <algorithm>
+
+
 const char* ssid = "TP-Link_9A9C";
 const char* password = "1234567890";
 const char* mqtt_server = "192.168.0.102";
@@ -59,7 +63,6 @@ void setup_wifi() {
   }
 
   randomSeed(micros());
-
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
@@ -131,30 +134,57 @@ void setup() {
   display.setTextColor(WHITE);
 }
 
+// void publishMessage() {
+//   memset(msg, 0, sizeof(msg));
+
+//   int len = strlen(fingerTemplateHex);
+//   int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
+
+//   for (int i = 0; i < numChunks; i++) {
+//     char chunk[chunkSize + 1];
+//     strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
+//     chunk[chunkSize] = '\0';                                       // Add null terminator
+//     String name = "fingerprint";
+//     doc["voterId"] = 1;
+//     doc["deviceId"] = "VOTE_1";
+//     doc[name] = chunk;
+
+//     serializeJson(doc, msg);
+//     client.publish("voteFingerprint", msg);
+
+//     client.flush();
+//     doc.clear();
+//   }
+//   memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
+
+//   Serial.println("S-a trimis");
+// }
 void publishMessage() {
-  memset(msg, 0, sizeof(msg));
+  // Encode the entire fingerprint data into Base64
+  unsigned char base64EncodedData[(4 * sizeof(fingerTemplateToSend) / 3) + 4];  // Extra space for padding
+  unsigned int base64Length = encode_base64(fingerTemplateToSend, sizeof(fingerTemplateToSend), base64EncodedData);
+  base64EncodedData[base64Length] = '\0';  // Null-terminate the Base64 string
 
-  int len = strlen(fingerTemplateHex);
-  int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
+  // Split the Base64 string into chunks and send each chunk
+  String base64String = (char*)base64EncodedData;
+  int chunkLength = chunkSize;  // Adjust chunkSize to fit within MQTT message limits
+  for (int i = 0; i < base64String.length(); i += chunkLength) {
+    // Extract a substring for the current chunk
+    String chunk = base64String.substring(i, min(static_cast<unsigned int>(i + chunkLength), base64String.length()));
 
-  for (int i = 0; i < numChunks; i++) {
-    char chunk[chunkSize + 1];
-    strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
-    chunk[chunkSize] = '\0';                                       // Add null terminator
-    String name = "fingerprint";
+    // Prepare the JSON message with the current chunk
     doc["voterId"] = 1;
     doc["deviceId"] = "VOTE_1";
-    doc[name] = chunk;
+    doc["fingerprintChunk"] = chunk;
 
+    // Serialize and publish the JSON message
+    memset(msg, 0, sizeof(msg));  // Clear the message buffer
     serializeJson(doc, msg);
     client.publish("voteFingerprint", msg);
 
     client.flush();
     doc.clear();
   }
-  memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
-
-  Serial.println("S-o trimis");
 }
 
 
@@ -293,14 +323,13 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
   uindx += 2;                                                  // skip checksum
   uindx += 9;                                                  // skip next header
   index += 256;                                                // advance pointer
-  memcpy(fingerTemplate + index, bytesReceived + uindx, 256);  // second 256 bytes
-
+  memcpy(fingerTemplate + index, bytesReceived + uindx, 256);
+  memcpy(fingerTemplateToSend, fingerTemplate, sizeof(fingerTemplateToSend));  // second 256 bytes
+  Serial.println("Down you can see fingerTemplate: ");
   for (int i = 0; i < 512; ++i) {
-    //Serial.print("0x");
-    printHex(fingerTemplate[i], 2);
-    //Serial.print(", ");
+    Serial.print(fingerTemplate[i]);
   }
-
+  Serial.println();
 
   toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
 
