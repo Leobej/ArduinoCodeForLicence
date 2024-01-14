@@ -1,10 +1,10 @@
+#include <Adafruit_Fingerprint.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <Adafruit_Fingerprint.h>
 #include <ArduinoJson.h>
 #include "base64.hpp"
 #include <algorithm>
@@ -41,6 +41,7 @@ const int JOYSTICK_Y = D3;
 const int JOYSTICK_BUTTON = D7;
 const int JOYSTICK_DEAD_ZONE = 50;
 int current_item = 0;
+int fingerprintId=-1;
 bool isFingerprintVerified = false;
 
 DynamicJsonDocument doc(1024);
@@ -159,6 +160,7 @@ void setup() {
 
 //   Serial.println("S-a trimis");
 // }
+
 void publishMessage() {
   // Encode the entire fingerprint data into Base64
   unsigned char base64EncodedData[(4 * sizeof(fingerTemplateToSend) / 3) + 4];  // Extra space for padding
@@ -185,6 +187,24 @@ void publishMessage() {
     client.flush();
     doc.clear();
   }
+}
+
+
+void publishMessage() {
+
+    // Prepare the JSON message with the current chunk
+    doc["voterId"] = 1;
+    doc["deviceId"] = "VOTE_1";
+    doc["fingerprintChunk"] = fingerprintId;
+
+    // Serialize and publish the JSON message
+    memset(msg, 0, sizeof(msg));  // Clear the message buffer
+    serializeJson(doc, msg);
+    client.publish("voteFingerprint", msg);
+
+    client.flush();
+    doc.clear();
+  
 }
 
 
@@ -265,6 +285,8 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
   Serial.println("------------------------------------");
   Serial.print("Attempting to load #");
   Serial.println(id);
+  //load to get the fingerprint
+  //storeModel to store it
   uint8_t p = finger.loadModel(id);
   switch (p) {
     case FINGERPRINT_OK:
@@ -304,6 +326,7 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
 
   uint32_t starttime = millis();
   int i = 0;
+  Serial.println("IN PULA MEA DE BYTESRECEIVED");
   while (i < 534 && (millis() - starttime) < 20000) {
     if (mySerial.available()) {
       bytesReceived[i++] = mySerial.read();
@@ -331,9 +354,9 @@ uint8_t downloadFingerprintTemplate(uint16_t id) {
   }
   Serial.println();
 
-  toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
+  // toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
 
-  Serial.print(fingerTemplateHex);
+  // Serial.print(fingerTemplateHex);
   Serial.println("\ndone.");
   return p;
 }
@@ -488,6 +511,7 @@ uint8_t getFingerprintEnroll() {
   Serial.print("ID ");
   Serial.println(id);
   p = finger.storeModel(id);
+  Serial.println("finger");
   if (p == FINGERPRINT_OK) {
     Serial.println("Stored!");
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
