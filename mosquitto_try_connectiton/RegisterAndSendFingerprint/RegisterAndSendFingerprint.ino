@@ -42,7 +42,7 @@ bool enrolled = false;
 uint8_t fingerTemplateToSend[512];
 char fingerTemplateHex[512];
 
-String deviceId="REG_1";
+String deviceId = "REG_1";
 
 //for AS608 fingerprint
 SoftwareSerial mySerial(D1, D2);
@@ -145,7 +145,7 @@ void publishMessage() {
     chunk[chunkSize] = '\0';                                       // Add null terminator
     doc["key"] = key;
     doc["fingerprint"] = chunk;
-    doc["deviceId"]=deviceId;
+    doc["deviceId"] = deviceId;
 
     serializeJson(doc, msg);
     client.publish("test/topic", msg);

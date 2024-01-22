@@ -27,9 +27,8 @@ unsigned long lastMsg = 0;
 char msg[MSG_BUFFER_SIZE];
 int value = 0;
 String payloadStr;
+String deviceId;
 
-uint8_t fingerTemplateToSend[512];
-char fingerTemplateHex[512];
 SoftwareSerial mySerial(D5, D6);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
@@ -41,11 +40,21 @@ const int JOYSTICK_Y = D3;
 const int JOYSTICK_BUTTON = D7;
 const int JOYSTICK_DEAD_ZONE = 50;
 int current_item = 0;
-int fingerprintId=-1;
+int fingerprintId = -1;
 bool isFingerprintVerified = false;
+bool isRegModeOn = false;
+bool isVoteModeOn = true;
 
 DynamicJsonDocument doc(1024);
 int chunkSize = 128;
+
+struct Candidate {
+  int id;
+  String name;
+};
+
+Candidate candidates[10];
+int numCandidates = 0;
 
 void setup_wifi() {
 
@@ -87,9 +96,38 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   // Check if the message is from the fingerprint verification topic
   if (String(topic) == "voteFingerprintTopic") {
-    if (payloadStr == "verified") {
+
+    DynamicJsonDocument doc(256);
+    deserializeJson(doc, payload);
+    String status = doc["status"];
+    int voterId = doc["voterId"];
+
+    if (status == "verified") {
       isFingerprintVerified = true;
-      Serial.println("Fingerprint verified!");
+      fingerprintId = voterId;
+      Serial.print("Fingerprint verified for voter ID: ");
+      Serial.println(voterId);
+    }
+
+    if (payloadStr == "reg") {
+      isRegModeOn = true;
+      isVoteModeOn = false;
+      Serial.println("Register Mode is on");
+    }
+
+    if (payloadStr == "vote") {
+      isRegModeOn = false;
+      isVoteModeOn = true;
+      Serial.println("Register Mode is on");
+    }
+    if (doc.containsKey("candidates")) {
+      JsonArray arr = doc["candidates"].as<JsonArray>();
+      numCandidates = 0;
+      for (JsonVariant v : arr) {
+        candidates[numCandidates].id = v["id"];
+        candidates[numCandidates].name = v["name"].as<String>();
+        numCandidates++;
+      }
     }
   }
 }
@@ -109,7 +147,7 @@ void reconnect() {
       client.publish("voteFingerprint", "s-a reconectat");
       // ... and resubscribe
       client.subscribe("voteFingerprintTopic");
-      // client.subscribe("verification");
+      client.subscribe("voteFingerprint");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -134,77 +172,36 @@ void setup() {
   display.setTextSize(2);
   display.setTextColor(WHITE);
 }
-
-// void publishMessage() {
-//   memset(msg, 0, sizeof(msg));
-
-//   int len = strlen(fingerTemplateHex);
-//   int numChunks = (len + chunkSize - 1) / chunkSize;  // Calculate number of chunks
-
-//   for (int i = 0; i < numChunks; i++) {
-//     char chunk[chunkSize + 1];
-//     strncpy(chunk, &fingerTemplateHex[i * chunkSize], chunkSize);  // Extract chunk from fingerTemplateHex
-//     chunk[chunkSize] = '\0';                                       // Add null terminator
-//     String name = "fingerprint";
-//     doc["voterId"] = 1;
-//     doc["deviceId"] = "VOTE_1";
-//     doc[name] = chunk;
-
-//     serializeJson(doc, msg);
-//     client.publish("voteFingerprint", msg);
-
-//     client.flush();
-//     doc.clear();
-//   }
-//   memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
-
-//   Serial.println("S-a trimis");
-// }
-
+//send message, which consists of the fingerprintId, if the fingerprintId is found i will
+//get back the voterId and the message to continue with the vote
 void publishMessage() {
-  // Encode the entire fingerprint data into Base64
-  unsigned char base64EncodedData[(4 * sizeof(fingerTemplateToSend) / 3) + 4];  // Extra space for padding
-  unsigned int base64Length = encode_base64(fingerTemplateToSend, sizeof(fingerTemplateToSend), base64EncodedData);
-  base64EncodedData[base64Length] = '\0';  // Null-terminate the Base64 string
+  // Prepare the JSON message with the current chunk
+  Serial.println("In publishMessage");
+  deviceId = "VOTE_1";
+  doc["deviceId"] = deviceId;
+  doc["fingerprint"] = fingerprintId;
 
-  // Split the Base64 string into chunks and send each chunk
-  String base64String = (char*)base64EncodedData;
-  int chunkLength = chunkSize;  // Adjust chunkSize to fit within MQTT message limits
-  for (int i = 0; i < base64String.length(); i += chunkLength) {
-    // Extract a substring for the current chunk
-    String chunk = base64String.substring(i, min(static_cast<unsigned int>(i + chunkLength), base64String.length()));
-
-    // Prepare the JSON message with the current chunk
-    doc["voterId"] = 1;
-    doc["deviceId"] = "VOTE_1";
-    doc["fingerprintChunk"] = chunk;
-
-    // Serialize and publish the JSON message
-    memset(msg, 0, sizeof(msg));  // Clear the message buffer
-    serializeJson(doc, msg);
-    client.publish("voteFingerprint", msg);
-
-    client.flush();
-    doc.clear();
-  }
+  // Serialize and publish the JSON message
+  memset(msg, 0, sizeof(msg));  // Clear the message buffer
+  serializeJson(doc, msg);
+  client.publish("voteFingerprint", msg);
+  client.flush();
+  doc.clear();
 }
 
 
-void publishMessage() {
+void publishVoter() {
+  Serial.println("In publishVoter");
+  memset(msg, 0, sizeof(msg));
+  deviceId = "REG_1";
+  doc["fingerprint"] = fingerprintId;
+  doc["deviceId"] = deviceId;
 
-    // Prepare the JSON message with the current chunk
-    doc["voterId"] = 1;
-    doc["deviceId"] = "VOTE_1";
-    doc["fingerprintChunk"] = fingerprintId;
+  serializeJson(doc, msg);
+  client.publish("test/topic", msg);
 
-    // Serialize and publish the JSON message
-    memset(msg, 0, sizeof(msg));  // Clear the message buffer
-    serializeJson(doc, msg);
-    client.publish("voteFingerprint", msg);
-
-    client.flush();
-    doc.clear();
-  
+  client.flush();
+  doc.clear();
 }
 
 
@@ -214,16 +211,31 @@ void loop() {
   }
   client.loop();
 
-  if (payloadStr == "nextFingerprint") {
-    finger.emptyDatabase();
-    Serial.println("Ready to enroll a fingerprint!");
-    id = 1;
-    Serial.print("Enrolling ID #");
+  if (payloadStr == "nextFingerprint" && isRegModeOn == true) {
+    Serial.println("Ready to register a voter!");
+    id = getUnusedFingerprintId();
     Serial.println(id);
     while (!getFingerprintEnroll())
       ;
-    publishMessage();
+    //send the voter fingerprint id, it should be the same that is stored in the fingerprint
+    publishVoter();
+    isRegModeOn = false;
+    isVoteModeOn = false;
+    payloadStr = "";
   }
+
+  if (payloadStr == "nextFingerprint" && isVoteModeOn == true) {
+    Serial.println("Ready to match a fingerprint!");
+    while (!getFingerprintID())
+      ;
+    //send to check if the same fingerprint is assigned in the database
+    publishMessage();
+    isRegModeOn = false;
+    isVoteModeOn = false;
+    payloadStr = "";
+  }
+
+
   payloadStr = "WaitingForNextFingerPrintCommand";
 
   int joystick_x = analogRead(JOYSTICK_X);
@@ -231,6 +243,7 @@ void loop() {
 
   // Navigation logic
   if (joystick_x < JOYSTICK_DEAD_ZONE) {
+
     if (current_item > 0) {
       current_item--;
     }
@@ -250,138 +263,39 @@ void loop() {
   int itemsPerPage = 5;  // Adjust based on your display size
   int page = current_item / itemsPerPage;
   int startIndex = page * itemsPerPage;
-  int endIndex = min(startIndex + itemsPerPage, static_cast<int>(sizeof(items) / sizeof(items[0])));
-
+  int endIndex = min(startIndex + itemsPerPage, numCandidates);
 
   for (int i = startIndex; i < endIndex; i++) {
     display.setCursor(10, (i - startIndex) * 10);  // Adjust text positioning as needed
     if (i == current_item) {
       display.print("> ");  // Arrow for the selected item
     }
-    display.println(items[i]);
+    display.println(candidates[i].name);
   }
 
   display.display();
 
-
   if (isFingerprintVerified && joystick_button == LOW) {
+    Serial.println("Now sending the vote");
     delay(300);  // debounce delay
-    DynamicJsonDocument voteDoc(256);
-    voteDoc["voterId"] = 1;
-    voteDoc["selectedItem"] = items[current_item];
 
-    char voteMsg[256];
-    serializeJson(voteDoc, voteMsg);
+    if (current_item >= 0 && current_item < numCandidates) {
+      DynamicJsonDocument voteDoc(256);
+      voteDoc["voterId"] = fingerprintId;
+      voteDoc["candidateId"] = candidates[current_item].id;
 
-    client.publish("send/vote", voteMsg);
-    isFingerprintVerified = false;
+      char voteMsg[256];
+      serializeJson(voteDoc, voteMsg);
 
-    Serial.println("Vote sent: ");
-    Serial.println(voteMsg);
-  }
-}
+      client.publish("send/vote", voteMsg);
+      isFingerprintVerified = false;
 
-uint8_t downloadFingerprintTemplate(uint16_t id) {
-  Serial.println("------------------------------------");
-  Serial.print("Attempting to load #");
-  Serial.println(id);
-  //load to get the fingerprint
-  //storeModel to store it
-  uint8_t p = finger.loadModel(id);
-  switch (p) {
-    case FINGERPRINT_OK:
-      Serial.print("Template ");
-      Serial.print(id);
-      Serial.println(" loaded");
-      break;
-    case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error downloadFingerPrintTemplate198");
-      return p;
-    default:
-      Serial.print("Unknown error ");
-      Serial.println(p);
-      return p;
-  }
-
-  // OK success!
-
-  Serial.print("Attempting to get #");
-  Serial.println(id);
-  p = finger.getModel();
-  switch (p) {
-    case FINGERPRINT_OK:
-      Serial.print("Template ");
-      Serial.print(id);
-      Serial.println(" transferring:");
-      break;
-    default:
-      Serial.print("Unknown error ");
-      Serial.println(p);
-      return p;
-  }
-
-  // one data packet is 267 bytes. in one data packet, 11 bytes are 'usesless' :D
-  uint8_t bytesReceived[534];  // 2 data packets
-  memset(bytesReceived, 0xff, 534);
-
-  uint32_t starttime = millis();
-  int i = 0;
-  Serial.println("IN PULA MEA DE BYTESRECEIVED");
-  while (i < 534 && (millis() - starttime) < 20000) {
-    if (mySerial.available()) {
-      bytesReceived[i++] = mySerial.read();
+      Serial.println("Vote sent: ");
+      Serial.println(voteMsg);
+    } else {
+      Serial.println("Invalid candidate selection");
     }
   }
-  Serial.print(i);
-  Serial.println(" bytes read.");
-  Serial.println("Decoding packet...");
-
-  uint8_t fingerTemplate[512];  // the real template
-  memset(fingerTemplate, 0xff, 512);
-
-  // filtering only the data packets
-  int uindx = 9, index = 0;
-  memcpy(fingerTemplate + index, bytesReceived + uindx, 256);  // first 256 bytes
-  uindx += 256;                                                // skip data
-  uindx += 2;                                                  // skip checksum
-  uindx += 9;                                                  // skip next header
-  index += 256;                                                // advance pointer
-  memcpy(fingerTemplate + index, bytesReceived + uindx, 256);
-  memcpy(fingerTemplateToSend, fingerTemplate, sizeof(fingerTemplateToSend));  // second 256 bytes
-  Serial.println("Down you can see fingerTemplate: ");
-  for (int i = 0; i < 512; ++i) {
-    Serial.print(fingerTemplate[i]);
-  }
-  Serial.println();
-
-  // toHexString(fingerTemplate, sizeof(fingerTemplate), fingerTemplateHex, sizeof(fingerTemplateHex));
-
-  // Serial.print(fingerTemplateHex);
-  Serial.println("\ndone.");
-  return p;
-}
-
-
-void toHexString(uint8_t* data, uint16_t size, char* hexString, uint16_t maxStringSize) {
-  char hexLookup[] = "0123456789ABCDEF";
-  uint16_t i = 0, j = 0;
-  for (i = 0; i < size && j + 2 < maxStringSize; i++) {
-    hexString[j++] = hexLookup[(data[i] >> 4) & 0x0F];
-    hexString[j++] = hexLookup[data[i] & 0x0F];
-  }
-  hexString[j] = '\0';  // terminate the string
-}
-
-
-void printHex(int num, int precision) {
-  char tmp[16];
-  char format[128];
-
-  sprintf(format, "%%.%dX", precision);
-
-  sprintf(tmp, format, num);
-
-  Serial.print(tmp);
 }
 
 
@@ -489,7 +403,6 @@ uint8_t getFingerprintEnroll() {
       return p;
   }
 
-
   // OK converted!
   Serial.print("Creating model for #");
   Serial.println(id);
@@ -497,6 +410,7 @@ uint8_t getFingerprintEnroll() {
   p = finger.createModel();
   if (p == FINGERPRINT_OK) {
     Serial.println("Prints matched!");
+    fingerprintId = id;
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error ");
     return p;
@@ -528,20 +442,105 @@ uint8_t getFingerprintEnroll() {
     return p;
   }
   Serial.println("");
-  downloadFingerprintTemplate(id);
-  // memset(fingerTemplateHex, 0, sizeof(fingerTemplateHex));
-  Serial.println("Exit from getFingerprintEnroll()");
+
+  //here send message
 
   return true;
 }
 
-uint8_t readnumber(void) {
-  uint8_t num = 0;
-
-  while (num == 0) {
-    while (!Serial.available())
-      ;
-    num = Serial.parseInt();
+uint8_t getFingerprintID() {
+  int p = -1;
+  Serial.print("Waiting for valid finger to find");
+  while (p != FINGERPRINT_OK) {
+    p = finger.getImage();
+    switch (p) {
+      case FINGERPRINT_OK:
+        Serial.println("Image taken");
+        break;
+      case FINGERPRINT_NOFINGER:
+        Serial.println(".");
+        break;
+      case FINGERPRINT_PACKETRECIEVEERR:
+        Serial.println("Communication error ");
+        break;
+      case FINGERPRINT_IMAGEFAIL:
+        Serial.println("Imaging error");
+        break;
+      default:
+        Serial.println("Unknown error");
+        break;
+    }
   }
-  return num;
+  // OK success!
+
+  p = finger.image2Tz();
+  switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image converted");
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      Serial.println("Image too messy");
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    default:
+      Serial.println("Unknown error");
+      return p;
+  }
+
+  // OK converted!
+  p = finger.fingerSearch();
+  if (p == FINGERPRINT_OK) {
+    Serial.println("Found a print match!");
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error");
+    return p;
+  } else if (p == FINGERPRINT_NOTFOUND) {
+    Serial.println("Did not find a match");
+    return p;
+  } else {
+    Serial.println("Unknown error");
+    return p;
+  }
+
+  // found a match!
+  Serial.print("Found ID #");
+  // Serial.print(finger.fingerID);
+  fingerprintId = finger.fingerID;
+  Serial.print(fingerprintId);
+  Serial.print(" with confidence of ");
+  Serial.println(finger.confidence);
+
+  return fingerprintId;
+}
+
+uint8_t getUnusedFingerprintId() {
+  uint8_t emptyId = 0;  // Initialize with a default value
+
+  for (uint8_t i = 1; i < 15; i++) {
+    uint8_t status = finger.loadModel(i);
+
+    Serial.print(i);
+    Serial.print(" ");
+    Serial.print(status);
+    Serial.println();
+    if (status != FINGERPRINT_OK) {
+      emptyId = i;
+      Serial.print("Empty ID found: ");
+      Serial.println(emptyId);
+      return emptyId;  // Return the found ID
+    }
+  }
+
+  if (emptyId == 0) {
+    Serial.println("No empty ID found");
+  }
+  return emptyId;  // Return 0 if no empty ID is found
 }
