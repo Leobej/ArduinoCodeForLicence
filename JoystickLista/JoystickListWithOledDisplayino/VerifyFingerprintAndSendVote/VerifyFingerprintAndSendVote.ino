@@ -237,6 +237,7 @@ void loop() {
 
 
   payloadStr = "WaitingForNextFingerPrintCommand";
+  isVoteModeOn = true;
 
   int joystick_x = analogRead(JOYSTICK_X);
   int joystick_button = digitalRead(JOYSTICK_BUTTON);
