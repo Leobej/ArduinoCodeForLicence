@@ -80,12 +80,6 @@ void setup_wifi() {
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
   char payloadWithNull[length + 1];
   memcpy(payloadWithNull, payload, length);
   payloadWithNull[length] = '\0';
@@ -93,10 +87,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println();
   Serial.println("This is the received messaged in a String: ");
   Serial.println(payloadStr);
-
-  // Check if the message is from the fingerprint verification topic
   if (String(topic) == "voteFingerprintTopic") {
-
     DynamicJsonDocument doc(256);
     deserializeJson(doc, payload);
     String status = doc["status"];
@@ -108,13 +99,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
       Serial.print("Fingerprint verified for voter ID: ");
       Serial.println(voterId);
     }
-
     if (payloadStr == "reg") {
       isRegModeOn = true;
       isVoteModeOn = false;
       Serial.println("Register Mode is on");
     }
-
     if (payloadStr == "vote") {
       isRegModeOn = false;
       isVoteModeOn = true;
@@ -133,35 +122,26 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void reconnect() {
-  // Loop until we're reconnected
-
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
-    // Attempt to connect
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      // Once connected, publish an announcement...
-      client.publish("voteFingerprint", "s-a reconectat");
-      // ... and resubscribe
       client.subscribe("voteFingerprintTopic");
       client.subscribe("voteFingerprint");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
       delay(5000);
     }
   }
 }
 
 void setup() {
-  pinMode(BUILTIN_LED, OUTPUT);  // Initialize the BUILTIN_LED pin as an output
+  pinMode(BUILTIN_LED, OUTPUT);
   Serial.begin(115200);
-  // set the data rate for the sensor serial port
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
@@ -174,21 +154,19 @@ void setup() {
 }
 //send message, which consists of the fingerprintId, if the fingerprintId is found i will
 //get back the voterId and the message to continue with the vote
-void publishMessage() {
+void publishFingerprintId() {
   // Prepare the JSON message with the current chunk
   Serial.println("In publishMessage");
   deviceId = "VOTE_1";
   doc["deviceId"] = deviceId;
   doc["fingerprint"] = fingerprintId;
 
-  // Serialize and publish the JSON message
-  memset(msg, 0, sizeof(msg));  // Clear the message buffer
+  memset(msg, 0, sizeof(msg));
   serializeJson(doc, msg);
   client.publish("voteFingerprint", msg);
   client.flush();
   doc.clear();
 }
-
 
 void publishVoter() {
   Serial.println("In publishVoter");
@@ -198,7 +176,7 @@ void publishVoter() {
   doc["deviceId"] = deviceId;
 
   serializeJson(doc, msg);
-  client.publish("test/topic", msg);
+  client.publish("registerVoter", msg);
 
   client.flush();
   doc.clear();
@@ -229,12 +207,11 @@ void loop() {
     while (!getFingerprintID())
       ;
     //send to check if the same fingerprint is assigned in the database
-    publishMessage();
+    publishFingerprintId();
     isRegModeOn = false;
     isVoteModeOn = false;
     payloadStr = "";
   }
-
 
   payloadStr = "WaitingForNextFingerPrintCommand";
   isVoteModeOn = true;
@@ -244,30 +221,28 @@ void loop() {
 
   // Navigation logic
   if (joystick_x < JOYSTICK_DEAD_ZONE) {
-
     if (current_item > 0) {
       current_item--;
     }
-    delay(300);  // debounce delay
+    delay(300);
   } else if (joystick_x > 1023 - JOYSTICK_DEAD_ZONE) {
     if (current_item < sizeof(items) / sizeof(items[0]) - 1) {
       current_item++;
     }
-    delay(300);  // debounce delay
+    delay(300);
   }
-
   // Display items and the arrow
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
 
-  int itemsPerPage = 5;  // Adjust based on your display size
+  int itemsPerPage = 5;
   int page = current_item / itemsPerPage;
   int startIndex = page * itemsPerPage;
   int endIndex = min(startIndex + itemsPerPage, numCandidates);
 
   for (int i = startIndex; i < endIndex; i++) {
-    display.setCursor(10, (i - startIndex) * 10);  // Adjust text positioning as needed
+    display.setCursor(10, (i - startIndex) * 10);
     if (i == current_item) {
       display.print("> ");  // Arrow for the selected item
     }
@@ -523,7 +498,7 @@ uint8_t getFingerprintID() {
 }
 
 uint8_t getUnusedFingerprintId() {
-  uint8_t emptyId = 0;  // Initialize with a default value
+  uint8_t emptyId = 0;  
 
   for (uint8_t i = 1; i < 15; i++) {
     uint8_t status = finger.loadModel(i);
@@ -536,12 +511,12 @@ uint8_t getUnusedFingerprintId() {
       emptyId = i;
       Serial.print("Empty ID found: ");
       Serial.println(emptyId);
-      return emptyId;  // Return the found ID
+      return emptyId; 
     }
   }
 
   if (emptyId == 0) {
     Serial.println("No empty ID found");
   }
-  return emptyId;  // Return 0 if no empty ID is found
+  return emptyId;  
 }
