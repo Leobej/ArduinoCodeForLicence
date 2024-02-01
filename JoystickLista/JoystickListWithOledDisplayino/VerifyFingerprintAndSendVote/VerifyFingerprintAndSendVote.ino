@@ -10,8 +10,10 @@
 #include <algorithm>
 
 
+// const char* ssid = "Pixel_5101";
 const char* ssid = "TP-Link_9A9C";
 const char* password = "1234567890";
+// const char* mqtt_server = "192.168.147.236";
 const char* mqtt_server = "192.168.0.102";
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -41,6 +43,9 @@ const int JOYSTICK_BUTTON = D7;
 const int JOYSTICK_DEAD_ZONE = 50;
 int current_item = 0;
 int fingerprintId = -1;
+int electionId = -1;
+int locationId = 1;
+
 bool isFingerprintVerified = false;
 bool isRegModeOn = false;
 bool isVoteModeOn = true;
@@ -59,7 +64,6 @@ int numCandidates = 0;
 void setup_wifi() {
 
   delay(10);
-  // We start by connecting to a WiFi network
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -92,7 +96,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
     deserializeJson(doc, payload);
     String status = doc["status"];
     int voterId = doc["voterId"];
-
+    electionId = doc["electionId"];
+    locationId = doc["locationId"];
     if (status == "verified") {
       isFingerprintVerified = true;
       fingerprintId = voterId;
@@ -107,7 +112,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     if (payloadStr == "vote") {
       isRegModeOn = false;
       isVoteModeOn = true;
-      Serial.println("Register Mode is on");
+      Serial.println("Vote Mode is on");
     }
     if (doc.containsKey("candidates")) {
       JsonArray arr = doc["candidates"].as<JsonArray>();
@@ -142,20 +147,25 @@ void reconnect() {
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
   Serial.begin(115200);
-  setup_wifi();
+
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
   finger.begin(57600);
   pinMode(JOYSTICK_BUTTON, INPUT_PULLUP);
+
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  delay(1000);
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
+  display.clearDisplay();       // Clear the display buffer
+  display.setTextSize(1);       // Normal 1:1 pixel scale
+  display.setTextColor(WHITE);  // Draw white text
+  display.setCursor(0, 0);      // Start at top-left corner
+  display.println(F("System Starting..."));
+  display.display();  // Show the message on the display
+  delay(2000);
+  setup_wifi();
 }
-//send message, which consists of the fingerprintId, if the fingerprintId is found i will
-//get back the voterId and the message to continue with the vote
+
 void publishFingerprintId() {
-  // Prepare the JSON message with the current chunk
+  delay(200);
   Serial.println("In publishMessage");
   deviceId = "VOTE_1";
   doc["deviceId"] = deviceId;
@@ -182,6 +192,7 @@ void publishVoter() {
   doc.clear();
 }
 
+bool voteSent = false;
 
 void loop() {
   if (!client.connected()) {
@@ -195,7 +206,7 @@ void loop() {
     Serial.println(id);
     while (!getFingerprintEnroll())
       ;
-    //send the voter fingerprint id, it should be the same that is stored in the fingerprint
+
     publishVoter();
     isRegModeOn = false;
     isVoteModeOn = false;
@@ -206,7 +217,7 @@ void loop() {
     Serial.println("Ready to match a fingerprint!");
     while (!getFingerprintID())
       ;
-    //send to check if the same fingerprint is assigned in the database
+
     publishFingerprintId();
     isRegModeOn = false;
     isVoteModeOn = false;
@@ -214,63 +225,81 @@ void loop() {
   }
 
   payloadStr = "WaitingForNextFingerPrintCommand";
-  isVoteModeOn = true;
+
 
   int joystick_x = analogRead(JOYSTICK_X);
   int joystick_button = digitalRead(JOYSTICK_BUTTON);
+  if (!voteSent) {
+    // Navigation logic
+    if (joystick_x < JOYSTICK_DEAD_ZONE) {
+      if (current_item > 0) {
+        current_item--;
+      }
+      delay(300);
+    } else if (joystick_x > 1023 - JOYSTICK_DEAD_ZONE) {
+      if (current_item < sizeof(items) / sizeof(items[0]) - 1) {
+        current_item++;
+      }
+      delay(300);
+    }
+    // Display items and the arrow
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
 
-  // Navigation logic
-  if (joystick_x < JOYSTICK_DEAD_ZONE) {
-    if (current_item > 0) {
-      current_item--;
+    int itemsPerPage = 5;
+    int page = current_item / itemsPerPage;
+    int startIndex = page * itemsPerPage;
+    int endIndex = min(startIndex + itemsPerPage, numCandidates);
+
+    for (int i = startIndex; i < endIndex; i++) {
+      display.setCursor(10, (i - startIndex) * 10);
+      if (i == current_item) {
+        display.print("> ");  // Arrow for the selected item
+      }
+      display.println(candidates[i].name);
     }
-    delay(300);
-  } else if (joystick_x > 1023 - JOYSTICK_DEAD_ZONE) {
-    if (current_item < sizeof(items) / sizeof(items[0]) - 1) {
-      current_item++;
-    }
-    delay(300);
+
+    display.display();
   }
-  // Display items and the arrow
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-
-  int itemsPerPage = 5;
-  int page = current_item / itemsPerPage;
-  int startIndex = page * itemsPerPage;
-  int endIndex = min(startIndex + itemsPerPage, numCandidates);
-
-  for (int i = startIndex; i < endIndex; i++) {
-    display.setCursor(10, (i - startIndex) * 10);
-    if (i == current_item) {
-      display.print("> ");  // Arrow for the selected item
-    }
-    display.println(candidates[i].name);
-  }
-
-  display.display();
 
   if (isFingerprintVerified && joystick_button == LOW) {
     Serial.println("Now sending the vote");
-    delay(300);  // debounce delay
+    delay(300);
+    voteSent = true;
 
     if (current_item >= 0 && current_item < numCandidates) {
       DynamicJsonDocument voteDoc(256);
       voteDoc["voterId"] = fingerprintId;
       voteDoc["candidateId"] = candidates[current_item].id;
+      voteDoc["electionId"] = electionId;
+      voteDoc["locationId"] = locationId;
 
       char voteMsg[256];
       serializeJson(voteDoc, voteMsg);
-
+      delay(500);
       client.publish("send/vote", voteMsg);
       isFingerprintVerified = false;
 
       Serial.println("Vote sent: ");
       Serial.println(voteMsg);
+
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Vote sent");
+      display.println("successfully!");
+      display.display();
+      delay(2000);
+      numCandidates = 0;
     } else {
       Serial.println("Invalid candidate selection");
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Invalid selection.");
+      display.display();
+      delay(2000);
     }
+    voteSent = false;
   }
 }
 
@@ -498,7 +527,7 @@ uint8_t getFingerprintID() {
 }
 
 uint8_t getUnusedFingerprintId() {
-  uint8_t emptyId = 0;  
+  uint8_t emptyId = 0;
 
   for (uint8_t i = 1; i < 15; i++) {
     uint8_t status = finger.loadModel(i);
@@ -511,12 +540,12 @@ uint8_t getUnusedFingerprintId() {
       emptyId = i;
       Serial.print("Empty ID found: ");
       Serial.println(emptyId);
-      return emptyId; 
+      return emptyId;
     }
   }
 
   if (emptyId == 0) {
     Serial.println("No empty ID found");
   }
-  return emptyId;  
+  return emptyId;
 }
