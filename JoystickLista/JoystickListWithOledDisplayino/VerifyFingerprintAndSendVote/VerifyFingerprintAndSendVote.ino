@@ -35,7 +35,6 @@ SoftwareSerial mySerial(D5, D6);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 uint8_t id;
 
-const char* items[] = { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9" };
 const int ITEM_DISPLAY_TIME = 2000;
 const int JOYSTICK_X = A0;
 const int JOYSTICK_Y = D3;
@@ -237,7 +236,7 @@ void loop() {
       }
       delay(300);
     } else if (joystick_x > 1023 - JOYSTICK_DEAD_ZONE) {
-      if (current_item < sizeof(items) / sizeof(items[0]) - 1) {
+      if (current_item < sizeof(candidates) / sizeof(candidates[0]) - 1) {
         current_item++;
       }
       delay(300);

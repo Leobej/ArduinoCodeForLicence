@@ -54,13 +54,7 @@ void setup() {
   Serial.println("Connected to WiFi");
 
   client.setServer(mqtt_server, 1883);
-  // display.begin(SSD1306_SWITCHCAPVCC, 0x3D);
-  // display.clearDisplay();
-  // display.setTextSize(1);
-  // display.setTextColor(WHITE);
-  // display.setCursor(0, 0);
-  // display.println(F("System Starting..."));
-  // display.display();
+
 }
 
 void loop() {
@@ -78,13 +72,13 @@ void loop() {
         message[messageIndex] = '\0';
         Serial.print("Deleted: ");
         Serial.println(message);
-        // display.print(message);
+  
       }
     } else if (key == '#') {
       if (messageIndex == messageLength) {
         doc["cnp"] = message;
         doc["deviceId"] = deviceId;
-        char jsonOutput[256];  // Adjust the size as needed
+        char jsonOutput[256];  
         serializeJson(doc, jsonOutput);
 
         client.publish("cnp", jsonOutput);
